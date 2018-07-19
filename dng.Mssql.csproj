@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <AssemblyName>dng.Mssql</AssemblyName>
+    <PackageId>dng.Mssql</PackageId>
+    <RootNamespace>dng.Mssql</RootNamespace>
+    <Version>1.1.5</Version>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageProjectUrl>https://github.com/2881099/dng.Mssql</PackageProjectUrl>
+    <Description>dotnetgen_sqlserver生成器所需sqlserver数据库基础封装</Description>
+    <RepositoryUrl>https://github.com/2881099/dng.Mssql</RepositoryUrl>
+    <PackageTags>dotnetgen dotnet mssql sqlserver 三层 生成器</PackageTags>
+    <WarningLevel>3</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <DocumentationFile>bin\Debug\netstandard2.0\dng.Mssql.xml</DocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Caching.Abstractions" Version="2.1.1" />
+	  <PackageReference Include="Microsoft.Extensions.Logging" Version="2.1.1" />
+	  <PackageReference Include="Newtonsoft.Json" Version="11.0.2" />
+	  <PackageReference Include="System.Data.SqlClient" Version="4.5.1" />
+	  <PackageReference Include="System.Memory" Version="4.5.1" />
+	  <PackageReference Include="System.ValueTuple" Version="4.5.0" />
+	</ItemGroup>
+</Project>
