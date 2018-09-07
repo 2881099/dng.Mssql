@@ -26,6 +26,11 @@ namespace System.Data.SqlClient {
 			values.CopyTo(parms, 0);
 			return base.Where(filter.Substring(4), parms) as TLinket;
 		}
+		/// <summary>
+		/// 若使用读写分离，默认查询【从库】，使用本方法明确查询【主库】
+		/// </summary>
+		/// <returns></returns>
+		public new TLinket Master() => base.Master() as TLinket;
 		public new TLinket Count(out int count) => base.Count(out count) as TLinket;
 		public new TLinket Where(string filter, params object[] parms) => base.Where(true, filter, parms) as TLinket;
 		public new TLinket Where(bool isadd, string filter, params object[] parms) => base.Where(isadd, filter, parms) as TLinket;
@@ -56,7 +61,7 @@ namespace System.Data.SqlClient {
 	}
 	public partial class SelectBuild<TReturnInfo> {
 		protected int _limit, _skip;
-		protected string _orderby, _field, _table, _join, _where, _groupby, _having, _overField;
+		protected string _select = "SELECT ", _orderby, _field, _table, _join, _where, _groupby, _having, _overField;
 		protected List<SqlParameter> _params = new List<SqlParameter>();
 		protected List<IDAL> _dals = new List<IDAL>();
 		protected Executer _exec;
@@ -134,7 +139,7 @@ namespace System.Data.SqlClient {
 			string where = string.IsNullOrEmpty(_where) ? string.Empty : string.Concat(" \r\nWHERE ", _where.Substring(5));
 			string top = _limit > 0 ? $"TOP {_skip + _limit} " : string.Empty;
 			string rownum = _skip > 0 ? $"ROW_NUMBER() OVER({_orderby}) AS rownum" : string.Empty;
-			string sql = string.Concat("SELECT ", top, rownum, field ?? _field, _overField, _table, _join, where, _skip > 0 ? string.Empty : _orderby);
+			string sql = string.Concat(_select, top, rownum, field ?? _field, _overField, _table, _join, where, _skip > 0 ? string.Empty : _orderby);
 			if (_skip > 0) sql = $"WITH t AS ( {sql} ) SELECT t.* FROM t WHERE rownum > {_skip}";
 			return sql;
 		}
@@ -151,7 +156,7 @@ namespace System.Data.SqlClient {
 							string.IsNullOrEmpty(_having) ? string.Empty : string.Concat(" \r\nHAVING ", _having.Substring(5));
 			string top = _limit > 0 ? $"TOP {_skip + _limit} " : string.Empty;
 			string rownum = _skip > 0 ? $"ROW_NUMBER() OVER({_orderby}) AS rownum" : string.Empty;
-			string sql = string.Concat("SELECT ", top, rownum, this.ParseCondi(fields, parms), _overField, _table, _join, where, _groupby, having, _skip > 0 ? string.Empty : _orderby);
+			string sql = string.Concat(_select, top, rownum, this.ParseCondi(fields, parms), _overField, _table, _join, where, _groupby, having, _skip > 0 ? string.Empty : _orderby);
 			if (_skip > 0) sql = $"WITH t AS ( {sql} ) SELECT t.* FROM t WHERE rownum > {_skip}";
 
 			List<T> ret = new List<T>();
@@ -183,6 +188,10 @@ namespace System.Data.SqlClient {
 				return constructor.Invoke(parms);
 			}
 			return dr.IsDBNull(++dataIndex) ? null : dr.GetValue(dataIndex);
+		}
+		protected SelectBuild<TReturnInfo> Master() {
+			_select = " SELECT "; // ExecuteReader 内会判断 StartsWith("SELECT ")，才使用从库查询
+			return this;
 		}
 		public int Count() {
 			return this.AggregateScalar<int>("count(1)");

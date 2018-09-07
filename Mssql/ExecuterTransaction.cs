@@ -50,7 +50,7 @@ namespace System.Data.SqlClient {
 		/// </summary>
 		public void BeginTransaction(TimeSpan timeout) {
 			int tid = Thread.CurrentThread.ManagedThreadId;
-			var conn = Pool.GetConnection();
+			var conn = MasterPool.GetConnection();
 			Transaction2 tran = null;
 
 			try {
@@ -100,7 +100,7 @@ namespace System.Data.SqlClient {
 			} catch (Exception ex) {
 				Log.LogError($"数据库出错（{f001}事务）：{ex.Message} {ex.StackTrace}");
 			} finally {
-				Pool.ReleaseConnection(tran.Conn);
+				MasterPool.ReleaseConnection(tran.Conn);
 			}
 		}
 		private void CommitTransaction(bool isCommit) {

@@ -68,7 +68,7 @@ namespace System.Data.SqlClient {
 							string.IsNullOrEmpty(_having) ? string.Empty : string.Concat(" \r\nHAVING ", _having.Substring(5));
 			string top = _limit > 0 ? $"TOP {_skip + _limit} " : string.Empty;
 			string rownum = _skip > 0 ? $"ROW_NUMBER() OVER({_orderby}) AS rownum" : string.Empty;
-			string sql = string.Concat("SELECT ", top, rownum, this.ParseCondi(fields, parms), _overField, _table, _join, where, _groupby, having, _skip > 0 ? string.Empty : _orderby);
+			string sql = string.Concat(_select, top, rownum, this.ParseCondi(fields, parms), _overField, _table, _join, where, _groupby, having, _skip > 0 ? string.Empty : _orderby);
 			if (_skip > 0) sql = $"WITH t AS ( {sql} ) SELECT t.* FROM t WHERE rownum > {_skip}";
 
 			List<T> ret = new List<T>();
