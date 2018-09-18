@@ -10,19 +10,19 @@
 
 ```csharp
 public static System.Data.SqlClient.Executer MssqlInstance = 
-    new System.Data.SqlClient.Executer(IDistributedCache, connectionString, ILogger);
+    new System.Data.SqlClient.Executer(IDistributedCache, masterConnectionString, slaveConnectionStrings, ILogger);
 
-//MssqlInstance.ExecuteReader
-//MssqlInstance.ExecuteReaderAsync
+MssqlInstance.ExecuteReader
+MssqlInstance.ExecuteReaderAsync
 
-//ExecuteArray
-//ExecuteArrayAsync
+MssqlInstance.ExecuteArray
+MssqlInstance.ExecuteArrayAsync
 
-//ExecuteNonQuery
-//ExecuteNonQueryAsync
+MssqlInstance.ExecuteNonQuery
+MssqlInstance.ExecuteNonQueryAsync
 
-//ExecuteScalar
-//ExecuteScalarAsync
+MssqlInstance.ExecuteScalar
+MssqlInstance.ExecuteScalarAsync
 ```
 
 # 事务
@@ -41,4 +41,26 @@ MssqlInstance.CacheShell(key, timeoutSeconds, () => {
 });
 
 MssqlInstance.RemoveCache(key);
+```
+
+# 读写分离
+
+若配置了从数据库连接串，从数据库可以设置多个，访问策略为随机。从库实现了故障切换，自动恢复机制。
+
+以下方法执行 sql 语句，为 select 开头，则默认查从数据库，反之则查主数据库。
+
+MssqlInstance.ExecuteReader
+MssqlInstance.ExecuteReaderAsync
+
+MssqlInstance.ExecuteArray
+MssqlInstance.ExecuteArrayAsync
+
+以下方法在主数据库执行：
+
+```csharp
+MssqlInstance.ExecuteNonQuery
+MssqlInstance.ExecuteNonQueryAsync
+
+MssqlInstance.ExecuteScalar
+MssqlInstance.ExecuteScalarAsync
 ```
