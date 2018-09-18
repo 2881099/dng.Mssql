@@ -15,6 +15,7 @@ namespace System.Data.SqlClient {
 		public Queue<Connection2> FreeConnections = new Queue<Connection2>();
 		public Queue<ManualResetEventSlim> GetConnectionQueue = new Queue<ManualResetEventSlim>();
 		public Queue<TaskCompletionSource<Connection2>> GetConnectionAsyncQueue = new Queue<TaskCompletionSource<Connection2>>();
+		public bool IsAvailable = false;
 		private static object _lock = new object();
 		private static object _lock_GetConnectionQueue = new object();
 		private string _connectionString;
