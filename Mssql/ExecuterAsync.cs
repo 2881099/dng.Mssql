@@ -48,6 +48,7 @@ namespace System.Data.SqlClient {
 					bool isSlaveFail = false;
 					try {
 						if (cmd.Connection.State == ConnectionState.Closed) await cmd.Connection.OpenAsync();
+						//if (slaveRandom.Next(100) % 2 == 0) throw new Exception("测试从库抛出异常");
 					} catch {
 						isSlaveFail = true;
 					}
@@ -55,7 +56,7 @@ namespace System.Data.SqlClient {
 						if (IsTracePerformance) logtxt_dt = DateTime.Now;
 						pool.ReleaseConnection(pc.conn);
 						if (IsTracePerformance) logtxt += $"ReleaseConnection: {DateTime.Now.Subtract(logtxt_dt).TotalMilliseconds}ms Total: {DateTime.Now.Subtract(dt).TotalMilliseconds}ms";
-						LoggerException(pool, cmd, new Exception("连接失败，准备切换其他可用服务器，并启动定时恢复机制"), dt, logtxt);
+						LoggerException(pool, cmd, new Exception($"连接失败，准备切换其他可用服务器"), dt, logtxt, false);
 
 						bool isCheckAvailable = false;
 						if (pool.IsAvailable) {
@@ -68,7 +69,7 @@ namespace System.Data.SqlClient {
 							}
 						}
 
-						if (isCheckAvailable) CheckPoolAvailable(pool, 5); //间隔5秒检查服务器可用性
+						if (isCheckAvailable) CheckPoolAvailable(pool, SlaveCheckAvailableInterval); //间隔多少秒检查服务器可用性
 						await ExecuteReaderAsync(readerHander, cmdType, cmdText, cmdParms);
 						return;
 					}

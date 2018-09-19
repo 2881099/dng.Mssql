@@ -2,6 +2,8 @@
 
 也是dotnetgen_sqlserver生成器所需sqlserver数据库基础封装
 
+https://github.com/2881099/dotnetGen_sqlserver
+
 # 安装
 
 > Install-Package dng.Mssql
