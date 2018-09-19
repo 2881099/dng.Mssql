@@ -1,4 +1,4 @@
-对 System.Data.SqlClient 进行的二次封装，包含连接池、缓存
+对 System.Data.SqlClient 进行的二次封装，包含连接池、事务、缓存、读写分离
 
 也是dotnetgen_sqlserver生成器所需sqlserver数据库基础封装
 
