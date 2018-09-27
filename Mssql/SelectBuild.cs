@@ -138,7 +138,7 @@ namespace System.Data.SqlClient {
 			string limit = string.Concat(_limit > 0 ? string.Format(" \r\nTOP {0}", _limit) : string.Empty, _skip > 0 ? string.Format(" \r\nrownum {0}", _skip) : string.Empty);
 			string where = string.IsNullOrEmpty(_where) ? string.Empty : string.Concat(" \r\nWHERE ", _where.Substring(5));
 			string top = _limit > 0 ? $"TOP {_skip + _limit} " : string.Empty;
-			string rownum = _skip > 0 ? $"ROW_NUMBER() OVER({_orderby}) AS rownum" : string.Empty;
+			string rownum = _skip > 0 ? $"ROW_NUMBER() OVER({_orderby}) AS rownum, " : string.Empty;
 			string sql = string.Concat(_select, top, rownum, field ?? _field, _overField, _table, _join, where, _skip > 0 ? string.Empty : _orderby);
 			if (_skip > 0) sql = $"WITH t AS ( {sql} ) SELECT t.* FROM t WHERE rownum > {_skip}";
 			return sql;
@@ -155,7 +155,7 @@ namespace System.Data.SqlClient {
 			string having = string.IsNullOrEmpty(_groupby) ||
 							string.IsNullOrEmpty(_having) ? string.Empty : string.Concat(" \r\nHAVING ", _having.Substring(5));
 			string top = _limit > 0 ? $"TOP {_skip + _limit} " : string.Empty;
-			string rownum = _skip > 0 ? $"ROW_NUMBER() OVER({_orderby}) AS rownum" : string.Empty;
+			string rownum = _skip > 0 ? $"ROW_NUMBER() OVER({_orderby}) AS rownum, " : string.Empty;
 			string sql = string.Concat(_select, top, rownum, this.ParseCondi(fields, parms), _overField, _table, _join, where, _groupby, having, _skip > 0 ? string.Empty : _orderby);
 			if (_skip > 0) sql = $"WITH t AS ( {sql} ) SELECT t.* FROM t WHERE rownum > {_skip}";
 
