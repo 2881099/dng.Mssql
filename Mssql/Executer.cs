@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
+using SafeObjectPool;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -9,24 +10,22 @@ namespace System.Data.SqlClient {
 	public partial class Executer : IDisposable {
 
 		public bool IsTracePerformance { get; set; } = string.Compare(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"), "Development", true) == 0;
-		public int SlaveCheckAvailableInterval = 5;
 		public ILogger Log { get; set; }
-		public ConnectionPool MasterPool { get; } = new ConnectionPool();
-		public List<ConnectionPool> SlavePools { get; } = new List<ConnectionPool>();
+		public SqlConnectionPool MasterPool { get; }
+		public List<SqlConnectionPool> SlavePools { get; } = new List<SqlConnectionPool>();
 		private int slaveUnavailables = 0;
 		private object slaveLock = new object();
 		private Random slaveRandom = new Random();
 
-		void LoggerException(ConnectionPool pool, SqlCommand cmd, Exception e, DateTime dt, string logtxt, bool isThrowException = true) {
-			var logPool = this.SlavePools.Any() == false ? "" : (pool == this.MasterPool ? "【主库】" : $"【从库{this.SlavePools.IndexOf(pool)}】");
+		void LoggerException(SqlConnectionPool pool, SqlCommand cmd, Exception e, DateTime dt, string logtxt, bool isThrowException = true) {
 			if (IsTracePerformance) {
 				TimeSpan ts = DateTime.Now.Subtract(dt);
 				if (e == null && ts.TotalMilliseconds > 100)
-					Log.LogWarning($"{logPool}执行SQL语句耗时过长{ts.TotalMilliseconds}ms\r\n{cmd.CommandText}\r\n{logtxt}");
+					Log.LogWarning($"{pool.Policy.Name}执行SQL语句耗时过长{ts.TotalMilliseconds}ms\r\n{cmd.CommandText}\r\n{logtxt}");
 			}
 
 			if (e == null) return;
-			string log = $"{logPool}数据库出错（执行SQL）〓〓〓〓〓〓〓〓〓〓〓〓〓〓〓\r\n{cmd.CommandText}\r\n";
+			string log = $"{pool.Policy.Name}数据库出错（执行SQL）〓〓〓〓〓〓〓〓〓〓〓〓〓〓〓\r\n{cmd.CommandText}\r\n";
 			foreach (SqlParameter parm in cmd.Parameters)
 				log += parm.ParameterName.PadRight(20, ' ') + " = " + (parm.Value ?? "NULL") + "\r\n";
 
@@ -38,40 +37,6 @@ namespace System.Data.SqlClient {
 			if (isThrowException) throw e;
 		}
 
-		void CheckPoolAvailable(ConnectionPool pool, int interval) {
-			new Thread(() => {
-				var slavePoolIndex = this.SlavePools.IndexOf(pool);
-				if (pool.IsAvailable == false) Log.LogError($"【从库{slavePoolIndex}】恢复检查时间：{DateTime.Now.AddSeconds(interval)}");
-				while (pool.IsAvailable == false) {
-					Thread.CurrentThread.Join(TimeSpan.FromSeconds(interval));
-					try {
-						var conn = pool.GetConnection();
-						try {
-							if (conn.SqlConnection.State == ConnectionState.Closed) conn.SqlConnection.Open();
-							//if (slaveRandom.Next(100) % 2 == 0) throw new Exception("测试CheckPoolAvailable抛出异常");
-							break;
-						} finally {
-							pool.ReleaseConnection(conn);
-						}
-					} catch(Exception ex) {
-						Log.LogError($"【从库{slavePoolIndex}】仍然不可用，下一次恢复检查时间：{DateTime.Now.AddSeconds(interval)}，错误：({ex.Message})");
-					}
-				}
-				bool isRestored = false;
-				if (pool.IsAvailable == false) {
-					lock (slaveLock) {
-						if (pool.IsAvailable == false) {
-							slaveUnavailables--;
-							pool.IsAvailable = true;
-							isRestored = true;
-						}
-					}
-				}
-				if (isRestored)
-					Log.LogError($"【从库{slavePoolIndex}】已恢复工作");
-			}).Start();
-		}
-
 		/// <summary>
 		/// 若使用【读写分离】，查询【从库】条件cmdText.StartsWith("SELECT ")，否则查询【主库】
 		/// </summary>
@@ -81,10 +46,9 @@ namespace System.Data.SqlClient {
 		/// <param name="cmdParms"></param>
 		public void ExecuteReader(Action<SqlDataReader> readerHander, CommandType cmdType, string cmdText, params SqlParameter[] cmdParms) {
 			DateTime dt = DateTime.Now;
-			SqlCommand cmd = new SqlCommand();
 			string logtxt = "";
 			DateTime logtxt_dt = DateTime.Now;
-			ConnectionPool pool = this.MasterPool;
+			var pool = this.MasterPool;
 			bool isSlave = false;
 
 			//读写分离规则
@@ -93,7 +57,7 @@ namespace System.Data.SqlClient {
 					//查从库
 					this.SlavePools : (
 					//查主库
-					slaveUnavailables == this.SlavePools.Count ? new List<ConnectionPool>() :
+					slaveUnavailables == this.SlavePools.Count ? new List<SqlConnectionPool>() :
 					//查从库可用
 					this.SlavePools.Where(sp => sp.IsAvailable).ToList());
 				if (availables.Any()) {
@@ -102,7 +66,8 @@ namespace System.Data.SqlClient {
 				}
 			}
 
-			var pc = PrepareCommand(pool, cmd, cmdType, cmdText, cmdParms, ref logtxt);
+			Object<SqlConnection> conn = null;
+			var pc = PrepareCommand(cmdType, cmdText, cmdParms, ref logtxt);
 			if (IsTracePerformance) logtxt += $"PrepareCommand: {DateTime.Now.Subtract(logtxt_dt).TotalMilliseconds}ms Total: {DateTime.Now.Subtract(dt).TotalMilliseconds}ms\r\n";
 			Exception ex = null;
 			try {
@@ -111,43 +76,31 @@ namespace System.Data.SqlClient {
 					//从库查询切换，恢复
 					bool isSlaveFail = false;
 					try {
-						if (cmd.Connection.State == ConnectionState.Closed) cmd.Connection.Open();
+						if (pc.cmd.Connection == null) pc.cmd.Connection = (conn = pool.Get()).Value;
 						//if (slaveRandom.Next(100) % 2 == 0) throw new Exception("测试从库抛出异常");
 					} catch {
 						isSlaveFail = true;
 					}
 					if (isSlaveFail) {
-						if (pc.tran == null) {
+						if (conn != null) {
 							if (IsTracePerformance) logtxt_dt = DateTime.Now;
-							pool.ReleaseConnection(pc.conn);
+							pool.Return(conn, ex);
 							if (IsTracePerformance) logtxt += $"ReleaseConnection: {DateTime.Now.Subtract(logtxt_dt).TotalMilliseconds}ms Total: {DateTime.Now.Subtract(dt).TotalMilliseconds}ms";
 						}
-						LoggerException(pool, cmd, new Exception($"连接失败，准备切换其他可用服务器"), dt, logtxt, false);
-
-						bool isCheckAvailable = false;
-						if (pool.IsAvailable) {
-							lock (slaveLock) {
-								if (pool.IsAvailable) {
-									slaveUnavailables++;
-									pool.IsAvailable = false;
-									isCheckAvailable = true;
-								}
-							}
-						}
-
-						if (isCheckAvailable) CheckPoolAvailable(pool, SlaveCheckAvailableInterval); //间隔多少秒检查服务器可用性
+						LoggerException(pool, pc.cmd, new Exception($"连接失败，准备切换其他可用服务器"), dt, logtxt, false);
+						pc.cmd.Parameters.Clear();
 						ExecuteReader(readerHander, cmdType, cmdText, cmdParms);
 						return;
 					}
 				} else {
 					//主库查询
-					if (cmd.Connection.State == ConnectionState.Closed) cmd.Connection.Open();
+					if (pc.cmd.Connection == null) pc.cmd.Connection = (conn = pool.Get()).Value;
 				}
 				if (IsTracePerformance) {
 					logtxt += $"Open: {DateTime.Now.Subtract(logtxt_dt).TotalMilliseconds}ms Total: {DateTime.Now.Subtract(dt).TotalMilliseconds}ms\r\n";
 					logtxt_dt = DateTime.Now;
 				}
-				using (SqlDataReader dr = cmd.ExecuteReader()) {
+				using (SqlDataReader dr = pc.cmd.ExecuteReader()) {
 					if (IsTracePerformance) logtxt += $"ExecuteReader: {DateTime.Now.Subtract(logtxt_dt).TotalMilliseconds}ms Total: {DateTime.Now.Subtract(dt).TotalMilliseconds}ms\r\n";
 					while (true) {
 						if (IsTracePerformance) logtxt_dt = DateTime.Now;
@@ -176,12 +129,13 @@ namespace System.Data.SqlClient {
 				ex = ex2;
 			}
 
-			if (pc.tran == null) {
+			if (conn != null) {
 				if (IsTracePerformance) logtxt_dt = DateTime.Now;
-				pool.ReleaseConnection(pc.conn);
+				pool.Return(conn, ex);
 				if (IsTracePerformance) logtxt += $"ReleaseConnection: {DateTime.Now.Subtract(logtxt_dt).TotalMilliseconds}ms Total: {DateTime.Now.Subtract(dt).TotalMilliseconds}ms";
 			}
-			LoggerException(pool, cmd, ex, dt, logtxt);
+			LoggerException(pool, pc.cmd, ex, dt, logtxt);
+			pc.cmd.Parameters.Clear();
 		}
 		/// <summary>
 		/// 若使用【读写分离】，查询【从库】条件cmdText.StartsWith("SELECT ")，否则查询【主库】
@@ -208,26 +162,26 @@ namespace System.Data.SqlClient {
 		/// <returns></returns>
 		public int ExecuteNonQuery(CommandType cmdType, string cmdText, params SqlParameter[] cmdParms) {
 			DateTime dt = DateTime.Now;
-			SqlCommand cmd = new SqlCommand();
 			string logtxt = "";
 			DateTime logtxt_dt = DateTime.Now;
-			var pc = PrepareCommand(this.MasterPool, cmd, cmdType, cmdText, cmdParms, ref logtxt);
+			Object<SqlConnection> conn = null;
+			var pc = PrepareCommand(cmdType, cmdText, cmdParms, ref logtxt);
 			int val = 0;
 			Exception ex = null;
 			try {
-				if (cmd.Connection.State == ConnectionState.Closed) cmd.Connection.Open();
-				val = cmd.ExecuteNonQuery();
+				if (pc.cmd.Connection == null) pc.cmd.Connection = (conn = this.MasterPool.Get()).Value;
+				val = pc.cmd.ExecuteNonQuery();
 			} catch (Exception ex2) {
 				ex = ex2;
 			}
 
-			if (pc.tran == null) {
+			if (conn != null) {
 				if (IsTracePerformance) logtxt_dt = DateTime.Now;
-				this.MasterPool.ReleaseConnection(pc.conn);
+				this.MasterPool.Return(conn, ex);
 				if (IsTracePerformance) logtxt += $"ReleaseConnection: {DateTime.Now.Subtract(logtxt_dt).TotalMilliseconds}ms Total: {DateTime.Now.Subtract(dt).TotalMilliseconds}ms";
 			}
-			LoggerException(this.MasterPool, cmd, ex, dt, logtxt);
-			cmd.Parameters.Clear();
+			LoggerException(this.MasterPool, pc.cmd, ex, dt, logtxt);
+			pc.cmd.Parameters.Clear();
 			return val;
 		}
 		/// <summary>
@@ -239,31 +193,32 @@ namespace System.Data.SqlClient {
 		/// <returns></returns>
 		public object ExecuteScalar(CommandType cmdType, string cmdText, params SqlParameter[] cmdParms) {
 			DateTime dt = DateTime.Now;
-			SqlCommand cmd = new SqlCommand();
 			string logtxt = "";
 			DateTime logtxt_dt = DateTime.Now;
-			var pc = PrepareCommand(this.MasterPool, cmd, cmdType, cmdText, cmdParms, ref logtxt);
+			Object<SqlConnection> conn = null;
+			var pc = PrepareCommand(cmdType, cmdText, cmdParms, ref logtxt);
 			object val = null;
 			Exception ex = null;
 			try {
-				if (cmd.Connection.State == ConnectionState.Closed) cmd.Connection.Open();
-				val = cmd.ExecuteScalar();
+				if (pc.cmd.Connection == null) pc.cmd.Connection = (conn = this.MasterPool.Get()).Value;
+				val = pc.cmd.ExecuteScalar();
 			} catch (Exception ex2) {
 				ex = ex2;
 			}
 
-			if (pc.tran == null) {
+			if (conn != null) {
 				if (IsTracePerformance) logtxt_dt = DateTime.Now;
-				this.MasterPool.ReleaseConnection(pc.conn);
+				this.MasterPool.Return(conn, ex);
 				if (IsTracePerformance) logtxt += $"ReleaseConnection: {DateTime.Now.Subtract(logtxt_dt).TotalMilliseconds}ms Total: {DateTime.Now.Subtract(dt).TotalMilliseconds}ms";
 			}
-			LoggerException(this.MasterPool, cmd, ex, dt, logtxt);
-			cmd.Parameters.Clear();
+			LoggerException(this.MasterPool, pc.cmd, ex, dt, logtxt);
+			pc.cmd.Parameters.Clear();
 			return val;
 		}
 
-		private (Connection2 conn, SqlTransaction tran) PrepareCommand(ConnectionPool pool, SqlCommand cmd, CommandType cmdType, string cmdText, SqlParameter[] cmdParms, ref string logtxt) {
+		private (SqlTransaction tran, SqlCommand cmd) PrepareCommand(CommandType cmdType, string cmdText, SqlParameter[] cmdParms, ref string logtxt) {
 			DateTime dt = DateTime.Now;
+			var cmd = new SqlCommand();
 			cmd.CommandType = cmdType;
 			cmd.CommandText = cmdText;
 
@@ -275,16 +230,10 @@ namespace System.Data.SqlClient {
 				}
 			}
 
-			Connection2 conn = null;
 			SqlTransaction tran = CurrentThreadTransaction;
 			if (IsTracePerformance) logtxt += $"	PrepareCommand_part1: {DateTime.Now.Subtract(dt).TotalMilliseconds}ms cmdParms: {cmdParms.Length}\r\n";
 
-			if (tran == null) {
-				if (IsTracePerformance) dt = DateTime.Now;
-				conn = pool.GetConnection();
-				cmd.Connection = conn.SqlConnection;
-				if (IsTracePerformance) logtxt += $"	PrepareCommand_tran==null: {DateTime.Now.Subtract(dt).TotalMilliseconds}ms\r\n";
-			} else {
+			if (tran != null) {
 				if (IsTracePerformance) dt = DateTime.Now;
 				cmd.Connection = tran.Connection;
 				cmd.Transaction = tran;
@@ -295,7 +244,7 @@ namespace System.Data.SqlClient {
 			AutoCommitTransaction();
 			if (IsTracePerformance) logtxt += $"	AutoCommitTransaction: {DateTime.Now.Subtract(dt).TotalMilliseconds}ms\r\n";
 
-			return (conn, tran);
+			return (tran, cmd);
 		}
 	}
 }

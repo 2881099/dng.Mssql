@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using SafeObjectPool;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -10,12 +11,12 @@ namespace System.Data.SqlClient {
 	partial class Executer {
 
 		class Transaction2 {
-			internal Connection2 Conn;
+			internal Object<SqlConnection> Conn;
 			internal SqlTransaction Transaction;
 			internal DateTime RunTime;
 			internal TimeSpan Timeout;
 
-			public Transaction2(Connection2 conn, SqlTransaction tran, TimeSpan timeout) {
+			public Transaction2(Object<SqlConnection> conn, SqlTransaction tran, TimeSpan timeout) {
 				Conn = conn;
 				Transaction = tran;
 				RunTime = DateTime.Now;
@@ -50,12 +51,12 @@ namespace System.Data.SqlClient {
 		/// </summary>
 		public void BeginTransaction(TimeSpan timeout) {
 			int tid = Thread.CurrentThread.ManagedThreadId;
-			var conn = MasterPool.GetConnection();
 			Transaction2 tran = null;
+			Object<SqlConnection> conn = null;
 
 			try {
-				if (conn.SqlConnection.State == ConnectionState.Closed) conn.SqlConnection.Open();
-				tran = new Transaction2(conn, conn.SqlConnection.BeginTransaction(), timeout);
+				conn = MasterPool.Get();
+				tran = new Transaction2(conn, conn.Value.BeginTransaction(), timeout);
 			} catch (Exception ex) {
 				Log.LogError($"数据库出错（开启事务）{ex.Message} \r\n{ex.StackTrace}");
 				throw ex;
@@ -80,27 +81,29 @@ namespace System.Data.SqlClient {
 		private void CommitTransaction(bool isCommit, Transaction2 tran) {
 			if (tran == null || tran.Transaction == null || tran.Transaction.Connection == null) return;
 
-			if (_trans.ContainsKey(tran.Conn.ThreadId))
+			if (_trans.ContainsKey(tran.Conn.LastGetThreadId))
 				lock (_trans_lock)
-					if (_trans.ContainsKey(tran.Conn.ThreadId))
-						_trans.Remove(tran.Conn.ThreadId);
+					if (_trans.ContainsKey(tran.Conn.LastGetThreadId))
+						_trans.Remove(tran.Conn.LastGetThreadId);
 
 			var removeKeys = PreRemove();
-			if (_preRemoveKeys.ContainsKey(tran.Conn.ThreadId))
+			if (_preRemoveKeys.ContainsKey(tran.Conn.LastGetThreadId))
 				lock (_preRemoveKeys_lock)
-					if (_preRemoveKeys.ContainsKey(tran.Conn.ThreadId))
-						_preRemoveKeys.Remove(tran.Conn.ThreadId);
+					if (_preRemoveKeys.ContainsKey(tran.Conn.LastGetThreadId))
+						_preRemoveKeys.Remove(tran.Conn.LastGetThreadId);
 
+			Exception ex = null;
 			var f001 = isCommit ? "提交" : "回滚";
 			try {
-				Log.LogDebug($"线程{tran.Conn.ThreadId}事务{f001}，批量删除Redis {Newtonsoft.Json.JsonConvert.SerializeObject(removeKeys)}");
+				Log.LogDebug($"线程{tran.Conn.LastGetThreadId}事务{f001}，批量删除缓存key {JsonConvert.SerializeObject(removeKeys)}");
 				CacheRemove(removeKeys);
 				if (isCommit) tran.Transaction.Commit();
 				else tran.Transaction.Rollback();
-			} catch (Exception ex) {
+			} catch (Exception ex2) {
+				ex = ex2;
 				Log.LogError($"数据库出错（{f001}事务）：{ex.Message} {ex.StackTrace}");
 			} finally {
-				MasterPool.ReleaseConnection(tran.Conn);
+				MasterPool.Return(tran.Conn, ex);
 			}
 		}
 		private void CommitTransaction(bool isCommit) {
