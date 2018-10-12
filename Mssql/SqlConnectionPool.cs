@@ -62,9 +62,9 @@ namespace System.Data.SqlClient {
 		}
 
 
-		public bool OnCheckAvailable(SqlConnection obj) {
-			if (obj.State == ConnectionState.Closed) obj.Open();
-			var cmd = obj.CreateCommand();
+		public bool OnCheckAvailable(Object<SqlConnection> obj) {
+			if (obj.Value.State == ConnectionState.Closed) obj.Value.Open();
+			var cmd = obj.Value.CreateCommand();
 			cmd.CommandText = "select 1";
 			cmd.ExecuteNonQuery();
 			return true;
@@ -73,6 +73,11 @@ namespace System.Data.SqlClient {
 		public SqlConnection OnCreate() {
 			var conn = new SqlConnection(_connectionString);
 			return conn;
+		}
+
+		public void OnDestroy(SqlConnection obj) {
+			if (obj.State != ConnectionState.Closed) obj.Close();
+			obj.Dispose();
 		}
 
 		public void OnGet(Object<SqlConnection> obj) {
