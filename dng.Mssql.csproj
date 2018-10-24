@@ -4,7 +4,7 @@
     <AssemblyName>dng.Mssql</AssemblyName>
     <PackageId>dng.Mssql</PackageId>
     <RootNamespace>dng.Mssql</RootNamespace>
-    <Version>1.1.21</Version>
+    <Version>1.1.22</Version>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageProjectUrl>https://github.com/2881099/dng.Mssql</PackageProjectUrl>
     <Description>dotnetgen_sqlserver生成器所需sqlserver数据库基础封装</Description>
@@ -19,11 +19,9 @@
     <PackageReference Include="Microsoft.Extensions.Caching.Abstractions" Version="2.1.1" />
 	  <PackageReference Include="Microsoft.Extensions.Logging" Version="2.1.1" />
 	  <PackageReference Include="Newtonsoft.Json" Version="11.0.2" />
+    <PackageReference Include="SafeObjectPool" Version="1.0.11" />
 	  <PackageReference Include="System.Data.SqlClient" Version="4.5.1" />
 	  <PackageReference Include="System.Memory" Version="4.5.1" />
 	  <PackageReference Include="System.ValueTuple" Version="4.5.0" />
-	</ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\SafeObjectPool\SafeObjectPool.csproj" />
   </ItemGroup>
 </Project>
