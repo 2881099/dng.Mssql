@@ -4,7 +4,7 @@
     <AssemblyName>dng.Mssql</AssemblyName>
     <PackageId>dng.Mssql</PackageId>
     <RootNamespace>dng.Mssql</RootNamespace>
-    <Version>1.2.2</Version>
+    <Version>1.2.3</Version>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageProjectUrl>https://github.com/2881099/dng.Mssql</PackageProjectUrl>
     <Description>dotnetgen_sqlserver生成器所需sqlserver数据库基础封装</Description>
