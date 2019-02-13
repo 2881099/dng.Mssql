@@ -21,10 +21,10 @@ namespace System.Data.SqlClient {
 						nparms[a] = parms[a];
 					else if (parms[a] is DateTime) {
 						DateTime dt = (DateTime) parms[a];
-						nparms[a] = string.Concat("'", dt.ToString("yyyy-MM-dd HH:mm:ss.ffffff"), "'");
+						nparms[a] = string.Concat("'", dt.ToString("yyyy-MM-dd HH:mm:ss.fff"), "'");
 					} else if (parms[a] is DateTime?) {
 						DateTime? dt = parms[a] as DateTime?;
-						nparms[a] = string.Concat("'", dt.Value.ToString("yyyy-MM-dd HH:mm:ss.ffffff"), "'");
+						nparms[a] = string.Concat("'", dt.Value.ToString("yyyy-MM-dd HH:mm:ss.fff"), "'");
 					} else if (parms[a] is IEnumerable) {
 						string sb = "";
 						var ie = parms[a] as IEnumerable;
